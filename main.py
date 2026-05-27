@@ -10,6 +10,13 @@ bot = commands.Bot(command_prefix="-", intents=intents)
 BANK_FILE = "bank.json"
 VIOLATION_FILE = "violations.json"
 
+# دالة مساعدة لتنسيق الأرقام بالفواصل (مثال: 1,000,000)
+def format_num(val):
+    try:
+        return f"{int(val):,}"
+    except:
+        return str(val)
+
 # ================= DATABASE =================
 def load(file):
     if os.path.exists(file):
@@ -45,9 +52,9 @@ async def my_account(ctx):
     user = get_user(ctx.guild.id, ctx.author.id)
 
     embed = disnake.Embed(title=f"🏦 حساب {ctx.author.display_name}", color=0x2b2d31)
-    embed.add_field(name="💵 الكاش", value=user["cash"])
-    embed.add_field(name="🏦 البنك", value=user["bank"])
-    embed.add_field(name="📊 المجموع", value=user["cash"] + user["bank"])
+    embed.add_field(name="💵 الكاش", value=format_num(user["cash"]))
+    embed.add_field(name="🏦 البنك", value=format_num(user["bank"]))
+    embed.add_field(name="📊 المجموع", value=format_num(user["cash"] + user["bank"]))
     embed.set_thumbnail(url=ctx.author.display_avatar.url)
 
     await ctx.send(embed=embed)
@@ -60,9 +67,9 @@ async def account(ctx, member: disnake.Member = None):
     user = get_user(ctx.guild.id, member.id)
 
     embed = disnake.Embed(title=f"🏦 حساب {member.display_name}", color=0x2b2d31)
-    embed.add_field(name="💵 الكاش", value=user["cash"])
-    embed.add_field(name="🏦 البنك", value=user["bank"])
-    embed.add_field(name="📊 المجموع", value=user["cash"] + user["bank"])
+    embed.add_field(name="💵 الكاش", value=format_num(user["cash"]))
+    embed.add_field(name="🏦 البنك", value=format_num(user["bank"]))
+    embed.add_field(name="📊 المجموع", value=format_num(user["cash"] + user["bank"]))
     embed.set_thumbnail(url=member.display_avatar.url)
 
     await ctx.send(embed=embed)
@@ -70,37 +77,60 @@ async def account(ctx, member: disnake.Member = None):
 # ================= تحويل =================
 @bot.command(name="تحويل")
 async def transfer(ctx, member: disnake.Member, amount: int):
+    if amount <= 0:
+        return await ctx.send("❌ المبلغ يجب ان يكون أكبر من صفر")
+
     sender = get_user(ctx.guild.id, ctx.author.id)
     receiver = get_user(ctx.guild.id, member.id)
 
     if sender["cash"] < amount:
         return await ctx.send("❌ ما عندك كاش كافي")
 
+    # التحقق من أن البنك للمستقبل لن يتعدى المليون
+    if receiver["bank"] + amount > 1000000:
+        return await ctx.send(f"❌ لا يمكنك التحويل، بنك {member.mention} سيتعدى الحد الأقصى ({format_num(1000000)})")
+
     sender["cash"] -= amount
-    receiver["cash"] += amount
+    receiver["bank"] += amount 
 
     update_user(ctx.guild.id, ctx.author.id, sender)
     update_user(ctx.guild.id, member.id, receiver)
 
-    await ctx.send(f"💸 تم تحويل {amount} إلى {member.mention}")
+    await ctx.send(f"💸 تم تحويل {format_num(amount)} إلى بنك {member.mention}")
 
 # ================= ايداع / سحب =================
 @bot.command(name="ايداع")
 async def deposit(ctx, amount: int):
+    if amount <= 0:
+        return await ctx.send("❌ المبلغ يجب ان يكون أكبر من صفر")
+
     user = get_user(ctx.guild.id, ctx.author.id)
 
     if user["cash"] < amount:
         return await ctx.send("❌ ما عندك كاش")
 
+    # نظام الحد الأقصى للبنك (مليون)
+    if user["bank"] >= 1000000:
+        return await ctx.send(f"❌ بنكك ممتلئ بالفعل! الحد الأقصى هو {format_num(1000000)}")
+
+    if user["bank"] + amount > 1000000:
+        allowed_amount = 1000000 - user["bank"]
+        user["cash"] -= allowed_amount
+        user["bank"] = 1000000
+        update_user(ctx.guild.id, ctx.author.id, user)
+        return await ctx.send(f"🏦 تم إيداع {format_num(allowed_amount)} فقط لأن البنك وصل للحد الأقصى ({format_num(1000000)})")
+
     user["cash"] -= amount
     user["bank"] += amount
 
     update_user(ctx.guild.id, ctx.author.id, user)
-
-    await ctx.send(f"🏦 تم إيداع {amount}")
+    await ctx.send(f"🏦 تم إيداع {format_num(amount)}")
 
 @bot.command(name="سحب")
 async def withdraw(ctx, amount: int):
+    if amount <= 0:
+        return await ctx.send("❌ المبلغ يجب ان يكون أكبر من صفر")
+
     user = get_user(ctx.guild.id, ctx.author.id)
 
     if user["bank"] < amount:
@@ -110,8 +140,7 @@ async def withdraw(ctx, amount: int):
     user["cash"] += amount
 
     update_user(ctx.guild.id, ctx.author.id, user)
-
-    await ctx.send(f"💵 تم سحب {amount}")
+    await ctx.send(f"💵 تم سحب {format_num(amount)}")
 
 # ================= ادارة =================
 @bot.command(name="اعطاء")
@@ -121,7 +150,7 @@ async def give(ctx, member: disnake.Member, amount: int):
     user["cash"] += amount
     update_user(ctx.guild.id, member.id, user)
 
-    await ctx.send(f"💰 تم إعطاء {amount} لـ {member.mention}")
+    await ctx.send(f"💰 تم إعطاء {format_num(amount)} كاش لـ {member.mention}")
 
 @bot.command(name="حساب-السيرفر")
 @commands.has_permissions(administrator=True)
@@ -140,7 +169,7 @@ async def server_accounts(ctx):
 
         embed.add_field(
             name=name,
-            value=f"💵 {data['cash']} | 🏦 {data['bank']}",
+            value=f"💵 {format_num(data['cash'])} | 🏦 {format_num(data['bank'])}",
             inline=False
         )
 
@@ -155,7 +184,7 @@ VIOLATIONS = [
 
 class ViolationSelect(disnake.ui.Select):
     def __init__(self, member, officer, image):
-        options = [disnake.SelectOption(label=f"{v[0]} | {v[1]}") for v in VIOLATIONS]
+        options = [disnake.SelectOption(label=f"{v[0]} | {format_num(v[1])}") for v in VIOLATIONS]
         super().__init__(placeholder="اختر المخالفة", options=options)
 
         self.member = member
@@ -183,7 +212,7 @@ class ViolationSelect(disnake.ui.Select):
         embed.add_field(name="👤 المواطن", value=self.member.mention)
         embed.add_field(name="👮 العسكري", value=self.officer.mention)
         embed.add_field(name="📄 المخالفة", value=selected)
-        embed.add_field(name="💰 الغرامة", value=fine)
+        embed.add_field(name="💰 الغرامة", value=format_num(fine))
 
         if self.image:
             embed.set_image(url=self.image)
@@ -211,7 +240,7 @@ async def violation(ctx, member: disnake.Member):
 # ================= تسديد =================
 class PaySelect(disnake.ui.Select):
     def __init__(self, violations):
-        options = [disnake.SelectOption(label=f"{v['type']} | {v['fine']}") for v in violations]
+        options = [disnake.SelectOption(label=f"{v['type']} | {format_num(v['fine'])}") for v in violations]
         super().__init__(placeholder="اختر للدفع", options=options)
         self.violations = violations
 
@@ -222,12 +251,13 @@ class PaySelect(disnake.ui.Select):
         gid = str(inter.guild.id)
         uid = str(inter.author.id)
 
+        chosen = None
         for v in self.violations:
             if v["type"] == selected:
                 chosen = v
                 break
 
-        if not str(chosen["fine"]).isdigit():
+        if not chosen or not str(chosen["fine"]).isdigit():
             return await inter.response.send_message("❌ ما تقدر تدفعها", ephemeral=True)
 
         user = get_user(inter.guild.id, inter.author.id)
@@ -245,7 +275,7 @@ class PaySelect(disnake.ui.Select):
         embed.add_field(name="👤 المواطن", value=inter.author.mention)
         embed.add_field(name="👮 العسكري", value=chosen["officer"])
         embed.add_field(name="📄 المخالفة", value=chosen["type"])
-        embed.add_field(name="💰 الغرامة", value=chosen["fine"])
+        embed.add_field(name="💰 الغرامة", value=format_num(chosen["fine"]))
 
         if chosen["image"]:
             embed.set_image(url=chosen["image"])
@@ -264,7 +294,7 @@ async def pay(ctx):
     gid = str(ctx.guild.id)
     uid = str(ctx.author.id)
 
-    if gid not in db or uid not in db[gid]:
+    if gid not in db or uid not in db[gid] or len(db[gid][uid]) == 0:
         return await ctx.send("❌ ما عندك مخالفات")
 
     embed = disnake.Embed(title="💳 اختر مخالفة للتسديد", color=0x2b2d31)
@@ -275,5 +305,4 @@ async def pay(ctx):
 async def on_message(message):
     await bot.process_commands(message)
 
-# حط التوكن مال بوتك الحقيقي مكان النجوم الحين ويشتغل طبيعي بالـ VS Code
 bot.run(os.getenv("TOKEN"))
