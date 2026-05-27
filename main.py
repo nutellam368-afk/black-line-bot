@@ -10,12 +10,19 @@ bot = commands.Bot(command_prefix="-", intents=intents)
 BANK_FILE = "bank.json"
 VIOLATION_FILE = "violations.json"
 
-# دالة مساعدة لتنسيق الأرقام بالفواصل (مثال: 1,000,000)
+# دالة مسابقة لتنسيق الأرقام بالفواصل مع رمز العملة ⃁
 def format_num(val):
     try:
-        return f"{int(val):,}"
+        return f"{int(val):,} ⃁"
     except:
-        return str(val)
+        return f"{str(val)} ⃁"
+
+# دالة لتنظيف الرقم المدخل من الفواصل
+def clean_num(val_str):
+    try:
+        return int(str(val_str).replace(",", ""))
+    except:
+        return 0
 
 # ================= DATABASE =================
 def load(file):
@@ -76,106 +83,127 @@ async def account(ctx, member: disnake.Member = None):
 
 # ================= تحويل =================
 @bot.command(name="تحويل")
-async def transfer(ctx, member: disnake.Member, amount: int):
-    if amount <= 0:
+async def transfer(ctx, member: disnake.Member, amount: str):
+    parsed_amount = clean_num(amount)
+    if parsed_amount <= 0:
         return await ctx.send("❌ المبلغ يجب ان يكون أكبر من صفر")
 
     sender = get_user(ctx.guild.id, ctx.author.id)
     receiver = get_user(ctx.guild.id, member.id)
 
-    if sender["cash"] < amount:
+    if sender["cash"] < parsed_amount:
         return await ctx.send("❌ ما عندك كاش كافي")
 
-    # التحقق من أن البنك للمستقبل لن يتعدى المليون
-    if receiver["bank"] + amount > 1000000:
+    if receiver["bank"] + parsed_amount > 1000000:
         return await ctx.send(f"❌ لا يمكنك التحويل، بنك {member.mention} سيتعدى الحد الأقصى ({format_num(1000000)})")
 
-    sender["cash"] -= amount
-    receiver["bank"] += amount 
+    sender["cash"] -= parsed_amount
+    receiver["bank"] += parsed_amount 
 
     update_user(ctx.guild.id, ctx.author.id, sender)
     update_user(ctx.guild.id, member.id, receiver)
 
-    await ctx.send(f"💸 تم تحويل {format_num(amount)} إلى بنك {member.mention}")
+    await ctx.send(f"💸 تم تحويل {format_num(parsed_amount)} إلى بنك {member.mention}")
 
 # ================= ايداع / سحب =================
 @bot.command(name="ايداع")
-async def deposit(ctx, amount: int):
-    if amount <= 0:
+async def deposit(ctx, amount: str):
+    parsed_amount = clean_num(amount)
+    if parsed_amount <= 0:
         return await ctx.send("❌ المبلغ يجب ان يكون أكبر من صفر")
 
     user = get_user(ctx.guild.id, ctx.author.id)
 
-    if user["cash"] < amount:
+    if user["cash"] < parsed_amount:
         return await ctx.send("❌ ما عندك كاش")
 
-    # نظام الحد الأقصى للبنك (مليون)
     if user["bank"] >= 1000000:
         return await ctx.send(f"❌ بنكك ممتلئ بالفعل! الحد الأقصى هو {format_num(1000000)}")
 
-    if user["bank"] + amount > 1000000:
+    if user["bank"] + parsed_amount > 1000000:
         allowed_amount = 1000000 - user["bank"]
         user["cash"] -= allowed_amount
         user["bank"] = 1000000
         update_user(ctx.guild.id, ctx.author.id, user)
         return await ctx.send(f"🏦 تم إيداع {format_num(allowed_amount)} فقط لأن البنك وصل للحد الأقصى ({format_num(1000000)})")
 
-    user["cash"] -= amount
-    user["bank"] += amount
+    user["cash"] -= parsed_amount
+    user["bank"] += parsed_amount
 
     update_user(ctx.guild.id, ctx.author.id, user)
-    await ctx.send(f"🏦 تم إيداع {format_num(amount)}")
+    await ctx.send(f"🏦 تم إيداع {format_num(parsed_amount)}")
 
 @bot.command(name="سحب")
-async def withdraw(ctx, amount: int):
-    if amount <= 0:
+async def withdraw(ctx, amount: str):
+    parsed_amount = clean_num(amount)
+    if parsed_amount <= 0:
         return await ctx.send("❌ المبلغ يجب ان يكون أكبر من صفر")
 
     user = get_user(ctx.guild.id, ctx.author.id)
 
-    if user["bank"] < amount:
+    if user["bank"] < parsed_amount:
         return await ctx.send("❌ ما عندك بالبنك")
 
-    user["bank"] -= amount
-    user["cash"] += amount
+    user["bank"] -= parsed_amount
+    user["cash"] += parsed_amount
 
     update_user(ctx.guild.id, ctx.author.id, user)
-    await ctx.send(f"💵 تم سحب {format_num(amount)}")
+    await ctx.send(f"💵 تم سحب {format_num(parsed_amount)}")
 
-# ================= ادارة =================
+# ================= 👑 أوامر الإدارة العليا فقط (ليست للعساكر) =================
+
 @bot.command(name="اعطاء")
-@commands.has_permissions(administrator=True)
-async def give(ctx, member: disnake.Member, amount: int):
+@commands.has_permissions(administrator=True) # للإدارة فقط
+async def give(ctx, member: disnake.Member, amount: str):
+    parsed_amount = clean_num(amount)
+    if parsed_amount <= 0:
+        return await ctx.send("❌ الرجاء تحديد مبلغ صحيح أكبر من صفر")
+
     user = get_user(ctx.guild.id, member.id)
-    user["cash"] += amount
+    user["cash"] += parsed_amount
     update_user(ctx.guild.id, member.id, user)
 
-    await ctx.send(f"💰 تم إعطاء {format_num(amount)} كاش لـ {member.mention}")
+    await ctx.send(f"👑 **[أمر إداري]** تم إعطاء {format_num(parsed_amount)} كاش لـ {member.mention}")
 
 @bot.command(name="حساب-السيرفر")
-@commands.has_permissions(administrator=True)
+@commands.has_permissions(administrator=True) # للإدارة فقط
 async def server_accounts(ctx):
     db = load(BANK_FILE)
     gid = str(ctx.guild.id)
 
-    if gid not in db:
-        return await ctx.send("❌ لا يوجد بيانات")
+    if gid not in db or not db[gid]:
+        return await ctx.send("❌ لا يوجد بيانات أعضاء في هذا السيرفر")
 
-    embed = disnake.Embed(title="📊 حسابات السيرفر", color=0x2b2d31)
+    embed = disnake.Embed(title="📊 حسابات السيرفر (إدارة عليا)", color=0x2b2d31)
 
     for uid, data in db[gid].items():
         member = ctx.guild.get_member(int(uid))
-        name = member.display_name if member else uid
+        name = member.display_name if member else f"عضو غادر ({uid})"
 
         embed.add_field(
-            name=name,
-            value=f"💵 {format_num(data['cash'])} | 🏦 {format_num(data['bank'])}",
+            name=f"👤 {name}",
+            value=f"💵 كاش: {format_num(data['cash'])} | 🏦 بنك: {format_num(data['bank'])}",
             inline=False
         )
 
     await ctx.send(embed=embed)
 
-# ================= مخالفات =================
+@bot.command(name="الغاء-مخالفة")
+@commands.has_permissions(administrator=True) # للإدارة فقط ومستحيل عسكري يسويها
+async def clear_violations(ctx, member: disnake.Member):
+    db = load(VIOLATION_FILE)
+    gid = str(ctx.guild.id)
+    uid = str(member.id)
+
+    if gid not in db or uid not in db[gid] or len(db[gid][uid]) == 0:
+        return await ctx.send(f"❌ {member.mention} ليس لديه أي مخالفات مسجلة ليتم إلغاؤها")
+
+    db[gid].pop(uid)
+    save(VIOLATION_FILE, db)
+
+    await ctx.send(f"✅ **[أمر إداري]** تم إلغاء وتصفير جميع مخالفات {member.mention} بنجاح!")
+
+# ================= 🚓 نظام المخالفات (متاح للعساكر/الجميع) =================
 VIOLATIONS = [
     ("زره", "500"),
     ("قطع اشاره", "3000"),
