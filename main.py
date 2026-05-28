@@ -10,16 +10,15 @@ bot = commands.Bot(command_prefix="-", intents=intents)
 BANK_FILE = "bank.json"
 VIOLATION_FILE = "violations.json"
 
-# 🛠️ حط هنا آيدي الروم الخاص بالاعتراضات اللي تبي الطلبات تروح له
-ADMIN_LOG_CHANNEL_ID = 123456789012345678  
+# 🛠️ الأقسام والرومات اللي حددتها أنت
+APPEAL_CHANNEL_ID = 1498633999579615242  # روم تقديم الاعتراض (اللي يرسل فيه البوت الإمبيد تلقائياً)
+ADMIN_LOG_CHANNEL_ID = 1509623362991821011  # روم الإدارة (اللي توجد فيه أزرار التحكم والقبول والرفض)
 
 # دالة مساعدة لتنسيق الأرقام بالفواصل مع رمز العملة ⃁
 def format_num(val):
     try:
-        # إذا القيمة رقم يحط فواصل وعملة
         return f"{int(val):,} ⃁"
     except:
-        # إذا نص (مثل منع من اللعب) يرجعه زي ما هو
         return str(val)
 
 # دالة لتنظيف الرقم المدخل من الفواصل
@@ -195,12 +194,10 @@ async def server_accounts(ctx):
 @bot.command(name="الغاء-مخالفة")
 @commands.has_permissions(administrator=True)
 async def clear_violation_by_reply(ctx):
-    # التحقق من أن الإداري قام بالرد على رسالة
     if not ctx.message.reference:
         return await ctx.send("❌ يرجى الرد (Reply) على رسالة المخالفة المراد إلغاؤها!")
 
     try:
-        # جلب الرسالة الأصيلة التي تم الرد عليها
         replied_msg = await ctx.channel.fetch_message(ctx.message.reference.message_id)
     except:
         return await ctx.send("❌ لم أتمكن من العثور على رسالة المخالفة الأصلية.")
@@ -211,28 +208,22 @@ async def clear_violation_by_reply(ctx):
     embed = replied_msg.embeds[0]
     citizen_mention = None
     violation_type = None
-    violation_fine = None
 
-    # استخراج البيانات تلقائياً من حقول الإمبيد
     for field in embed.fields:
         if "المواطن" in field.name:
-            citizen_mention = field.value  # يرجع بصيغة <@id>
+            citizen_mention = field.value
         elif "المخالفة" in field.name:
             violation_type = field.value
-        elif "الغرامة" in field.name or "العقوبة" in field.name:
-            violation_fine = field.value.replace(" ⃁", "").replace(",", "")
 
     if not citizen_mention or not violation_type:
         return await ctx.send("❌ فشل استخراج بيانات المخالفة من الرسالة. تأكد أنها رسالة مخالفة صحيحة.")
 
-    # تحويل منشن المواطن إلى آيدي رقمي
     citizen_id = str(citizen_mention.replace("<@", "").replace(">", "").replace("!", ""))
 
     db = load(VIOLATION_FILE)
     gid = str(ctx.guild.id)
 
     if gid in db and citizen_id in db[gid]:
-        # البحث عن المخالفة المطابقة وحذفها من السجل
         found = False
         for v in db[gid][citizen_id]:
             if v["type"] == violation_type:
@@ -242,21 +233,17 @@ async def clear_violation_by_reply(ctx):
         
         if found:
             save(VIOLATION_FILE, db)
-            
-            # تعديل الإمبيد الأصلي ليوضح أنه تم الإلغاء وحذف الأزرار
             embed.color = 0x36393f
             embed.title = "🗑️ [تم إلغاء المخالفة بواسطة الإدارة]"
-            try:
-                await replied_msg.edit(embed=embed, view=None)
-            except:
-                pass
+            try: await replied_msg.edit(embed=embed, view=None)
+            except: pass
 
             return await ctx.send(f"✅ **[أمر إداري]** تم إسقاط وإلغاء مخالفة **({violation_type})** المسجلة ضد {citizen_mention} بنجاح!")
 
-    await ctx.send("❌ لم يتم العثور على هذه المخالفة مسجلة في ملف المواطن بقاعدة البيانات.")
+    await ctx.send("❌ لم يتم العثور على هذه المخالفة مسجلة في ملف المواطن.")
 
 
-# ================= ⚖️ نظام شات الاعتراضات المخصص للأزرار والـ Modals =================
+# ================= ⚖️ نظام لوحة التحكم في روم الاعتراض المخصص والأزرار والـ Modals =================
 
 class AdminAppealButtons(disnake.ui.View):
     def __init__(self, user_id, violation_data):
@@ -264,7 +251,7 @@ class AdminAppealButtons(disnake.ui.View):
         self.user_id = user_id
         self.violation_data = violation_data
 
-    @disnake.ui.button(label="✅ قبول الاعتراض", style=disnake.ButtonStyle.green)
+    @disnake.ui.button(label="✅ قبول الاعتراض", style=disnake.ButtonStyle.green, custom_id="admin_approve")
     async def approve(self, button: disnake.ui.Button, inter: disnake.MessageInteraction):
         if not inter.author.guild_permissions.administrator:
             return await inter.response.send_message("❌ هذا الزر مخصص للإدارة العليا فقط!", ephemeral=True)
@@ -292,7 +279,7 @@ class AdminAppealButtons(disnake.ui.View):
             if member: await member.send(f"🎉 تم قبول اعتراضك على مخالفة **({self.violation_data['type']})** وتم إسقاطها عنك!")
         except: pass
 
-    @disnake.ui.button(label="❌ رفض الاعتراض", style=disnake.ButtonStyle.red)
+    @disnake.ui.button(label="❌ رفض الاعتراض", style=disnake.ButtonStyle.red, custom_id="admin_deny")
     async def deny(self, button: disnake.ui.Button, inter: disnake.MessageInteraction):
         if not inter.author.guild_permissions.administrator:
             return await inter.response.send_message("❌ هذا الزر مخصص للإدارة العليا فقط!", ephemeral=True)
@@ -311,7 +298,7 @@ class AdminAppealButtons(disnake.ui.View):
 
 
 class AppealReasonModal(disnake.ui.Modal):
-    def __init__(self, violation_data, citizen_id, original_msg):
+    def __init__(self, violation_data, citizen_id):
         components = [
             disnake.ui.TextInput(
                 label="سبب الاعتراض",
@@ -325,14 +312,13 @@ class AppealReasonModal(disnake.ui.Modal):
         super().__init__(title="تقديم طلب اعتراض", components=components)
         self.violation_data = violation_data
         self.citizen_id = citizen_id
-        self.original_msg = original_msg
 
     async def callback(self, inter: disnake.ModalInteraction):
         reason = inter.text_values["reason_input"]
         appeal_channel = inter.guild.get_channel(ADMIN_LOG_CHANNEL_ID)
 
         if not appeal_channel:
-            return await inter.response.send_message("❌ خطأ: لم يتم العثور على روم الاعتراضات المخصص. تواصل مع الإدارة.", ephemeral=True)
+            return await inter.response.send_message("❌ خطأ: لم يتم العثور على روم الاعتراضات المخصص للإدارة.", ephemeral=True)
 
         embed = disnake.Embed(title="⚖️ طلب اعتراض جديد على مخالفة", color=0xf1c40f)
         embed.add_field(name="👤 المواطن المعترض", value=f"<@{self.citizen_id}>", inline=True)
@@ -345,31 +331,57 @@ class AppealReasonModal(disnake.ui.Modal):
             embed.set_image(url=self.violation_data["image"])
 
         await appeal_channel.send(embed=embed, view=AdminAppealButtons(self.citizen_id, self.violation_data))
-        
-        try:
-            orig_embed = self.original_msg.embeds[0]
-            orig_embed.set_footer(text="⚙️ تم تقديم طلب اعتراض على هذه المخالفة")
-            await self.original_msg.edit(embed=orig_embed, view=None)
-        except: pass
-
-        await inter.response.send_message(f"✅ تم إرسال طلب اعتراضك بنجاح إلى روم الاعتراضات المخصص.", ephemeral=True)
+        await inter.response.send_message("✅ تم إرسال طلب اعتراضك بنجاح إلى روم الإدارة وجاري النظر فيه.", ephemeral=True)
 
 
-class CitizenAppealButton(disnake.ui.View):
-    def __init__(self, citizen_id, violation_data):
-        super().__init__(timeout=None)
+class DirectAppealSelect(disnake.ui.Select):
+    def __init__(self, violations, citizen_id):
+        options = []
+        for i, v in enumerate(violations):
+            officer_name = v['officer'].split('#')[0] if '@' not in v['officer'] else "عسكري"
+            options.append(disnake.SelectOption(
+                label=f"{v['type']} | {format_num(v['fine'])}",
+                description=f"👮 العسكري: {officer_name}",
+                value=str(i)
+            ))
+        super().__init__(placeholder="اختر المخالفة التي ترغب بالاعتراض عليها من القائمة", options=options)
+        self.violations = violations
         self.citizen_id = citizen_id
-        self.violation_data = violation_data
 
-    @disnake.ui.button(label="⚖️ اعتراض على المخالفة", style=disnake.ButtonStyle.blurple, custom_id="citizen_appeal_btn")
-    async def appeal_click(self, button: disnake.ui.Button, inter: disnake.MessageInteraction):
-        if inter.author.id != self.citizen_id:
-            return await inter.response.send_message("❌ هذه المخالفة ليست مسجلة ضدك لتعتمد عليها!", ephemeral=True)
-
-        await inter.response.send_modal(modal=AppealReasonModal(self.violation_data, self.citizen_id, inter.message))
+    async def callback(self, inter: disnake.MessageInteraction):
+        idx = int(self.values[0])
+        chosen_violation = self.violations[idx]
+        await inter.response.send_modal(modal=AppealReasonModal(chosen_violation, self.citizen_id))
 
 
-# ================= 🚓 قائمة المخالفات الجديدة والمحدثة بالكامل =================
+class DirectAppealSelectView(disnake.ui.View):
+    def __init__(self, violations, citizen_id):
+        super().__init__(timeout=60)
+        self.add_item(DirectAppealSelect(violations, citizen_id))
+
+
+class RoomAppealBaseButton(disnake.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @disnake.ui.button(label="⚖️ تقديم طلب اعتراض", style=disnake.ButtonStyle.blurple, custom_id="base_appeal_btn")
+    async def open_menu(self, button: disnake.ui.Button, inter: disnake.MessageInteraction):
+        db = load(VIOLATION_FILE)
+        gid = str(inter.guild.id)
+        uid = str(inter.author.id)
+
+        if gid not in db or uid not in db[gid] or len(db[gid][uid]) == 0:
+            return await inter.response.send_message("❌ ملفك نظيف تماماً! ليس لديك أي مخالفات لتسجيل اعتراض عليها.", ephemeral=True)
+
+        # إرسال قائمة الاختيارات للشخص بشكل مخفي (ephemeral) يختار منها
+        await inter.response.send_message(
+            content="📋 ظهرت لك قائمة بمخالفاتك المسجلة حالياً، يرجى اختيار واحدة لتحديدها:",
+            view=DirectAppealSelectView(db[gid][uid], inter.author.id),
+            ephemeral=True
+        )
+
+
+# ================= 🚓 قائمة المخالفات الكاملة =================
 VIOLATIONS = [
     ("زره", "500"),
     ("قطع اشاره", "3000"),
@@ -391,7 +403,6 @@ VIOLATIONS = [
 
 class ViolationSelect(disnake.ui.Select):
     def __init__(self, member, officer, image):
-        # عرض البيانات المنسقة داخل القائمة المنسدلة
         options = [disnake.SelectOption(label=f"{v[0]} | {format_num(v[1])}") for v in VIOLATIONS]
         super().__init__(placeholder="اختر المخالفة المراد تسجيلها", options=options)
 
@@ -422,18 +433,13 @@ class ViolationSelect(disnake.ui.Select):
         embed.add_field(name="👤 المواطن", value=self.member.mention)
         embed.add_field(name="👮 العسكري", value=self.officer.mention)
         embed.add_field(name="📄 المخالفة", value=selected)
-        
-        # إذا كانت غرامة مالية أو عقوبة إدارية
-        label_name = "💰 الغرامة / العقوبة"
-        embed.add_field(name=label_name, value=format_num(fine))
+        embed.add_field(name="💰 الغرامة / العقوبة", value=format_num(fine))
 
         if self.image:
             embed.set_image(url=self.image)
 
         await inter.message.delete()
-        
-        # إرسال المخالفة في الروم مع زر الاعتراض الفوري للمواطن
-        await inter.channel.send(embed=embed, view=CitizenAppealButton(self.member.id, violation_entry))
+        await inter.channel.send(embed=embed) # ترسل هنا بدون أزرار، لأن التقديم صار بالروم العام
 
 class ViolationView(disnake.ui.View):
     def __init__(self, member, officer, image):
@@ -475,9 +481,8 @@ class PaySelect(disnake.ui.Select):
         if not chosen:
             return await inter.response.send_message("❌ حدث خطأ في العثور على المخالفة", ephemeral=True)
 
-        # إذا كانت المخالفة عقوبة إدارية (منع من اللعب) وليست مبلع مالي رقمي
         if not str(chosen["fine"]).isdigit():
-            return await inter.response.send_message("❌ هذه مخالفة إدارية (ليست غرامة مالية) ولا يمكن تسديدها كاش، تواصل مع الإدارة العليا!", ephemeral=True)
+            return await inter.response.send_message("❌ هذه مخالفة إدارية وعقوبة سلوكية وليست غرامة مالية ليتم دفعها!", ephemeral=True)
 
         user = get_user(inter.guild.id, inter.author.id)
 
@@ -514,12 +519,45 @@ async def pay(ctx):
     uid = str(ctx.author.id)
 
     if gid not in db or uid not in db[gid] or len(db[gid][uid]) == 0:
-        return await ctx.send("❌ السجلات نظيفة، ليس لديك أي مخالفات لتسديدها")
+        return await ctx.send("❌ ليس لديك أي مخالفات لتسديدها")
 
     embed = disnake.Embed(title="💳 اختر مخالفة مالية للتسديد", color=0x2b2d31)
     await ctx.send(embed=embed, view=PayView(db[gid][uid]))
 
-# =================
+
+# ================= ⚡ تشغيل البوت وإرسال إمبيد تقديم الاعتراض التلقائي =================
+
+@bot.event
+async def on_ready():
+    print(f"✅ تم تشغيل البوت بنجاح باسم: {bot.user}")
+    
+    # ربط الأزرار الثابتة لكي لا تعطل عند ريستارت البوت
+    bot.add_view(RoomAppealBaseButton())
+    bot.add_view(AdminAppealButtons(None, None))
+    
+    # إرسال رسالة التقديم الثابتة في روم المواطنين المخصص
+    channel = bot.get_channel(APPEAL_CHANNEL_ID)
+    if channel:
+        try:
+            # تنظيف الروم أولاً لكي لا تتكرر الرسائل عند كل تشغيل
+            await channel.purge(limit=10)
+            
+            embed = disnake.Embed(
+                title="⚖️ المحكمة الإدارية | تقديم طلبات الاعتراض",
+                description=(
+                    "إذا كنت ترى أن هناك مخالفة مرورية سجلت ضدك بشكل خاطئ أو تعسفي، "
+                    "يمكنك تقديم طلب اعتراض رسمي مباشرة للإدارة العليا.\n\n"
+                    "**اضغط على الزر أدناه لبدء تقديم الطلب وتحديد المخالفة:**"
+                ),
+                color=0x2b2d31
+            )
+            embed.set_footer(text="نظام الاعتراضات الآلي والمنظم للسيرفر")
+            
+            await channel.send(embed=embed, view=RoomAppealBaseButton())
+            print("📬 تم تحديث وإرسال إمبيد الاعتراض في الروم المخصص بنجاح.")
+        except Exception as e:
+            print(f"❌ حدث خطأ أثناء محاولة تحديث روم الاعتراضات: {e}")
+
 @bot.event
 async def on_message(message):
     await bot.process_commands(message)
