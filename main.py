@@ -10,9 +10,8 @@ bot = commands.Bot(command_prefix="-", intents=intents)
 BANK_FILE = "bank.json"
 VIOLATION_FILE = "violations.json"
 
-# 🛠️ الأقسام والرومات اللي حددتها أنت
-APPEAL_CHANNEL_ID = 1498633999579615242  # روم تقديم الاعتراض (اللي يرسل فيه البوت الإمبيد تلقائياً)
-ADMIN_LOG_CHANNEL_ID = 1509623362991821011  # روم الإدارة (اللي توجد فيه أزرار التحكم والقبول والرفض)
+APPEAL_CHANNEL_ID = 1498633999579615242  
+ADMIN_LOG_CHANNEL_ID = 1509623362991821011  
 
 # دالة مساعدة لتنسيق الأرقام بالفواصل مع رمز العملة ⃁
 def format_num(val):
@@ -154,7 +153,7 @@ async def withdraw(ctx, amount: str):
     update_user(ctx.guild.id, ctx.author.id, user)
     await ctx.send(f"💵 تم سحب {format_num(parsed_amount)}")
 
-# ================= أوامر الإدارة العليا =================
+# ================= 👑 أوامر الإدارة العليا =================
 @bot.command(name="اعطاء")
 @commands.has_permissions(administrator=True)
 async def give(ctx, member: disnake.Member, amount: str):
@@ -242,8 +241,24 @@ async def clear_violation_by_reply(ctx):
 
     await ctx.send("❌ لم يتم العثور على هذه المخالفة مسجلة في ملف المواطن.")
 
+# 🆕 أمر تصفير الرتب الجديد
+@bot.command(name="تصفير-رتب")
+@commands.has_permissions(administrator=True) # حصري للإدارة فقط
+async def reset_roles(ctx, member: disnake.Member):
+    if member.id == ctx.guild.owner_id:
+        return await ctx.send("❌ لا يمكنك تصفير رتب مالك السيرفر!")
 
-# ================= ⚖️ نظام لوحة التحكم في روم الاعتراض المخصص والأزرار والـ Modals =================
+    try:
+        # تعديل رتب العضو لتصبح فارغة (يحتفظ فقط برتبة everyone تلقائياً)
+        await member.edit(roles=[])
+        await ctx.send(f"👑 **[أمر إداري]** تم تصفير وسحب جميع الرتب من {member.mention} بنجاح!")
+    except disnake.Forbidden:
+        await ctx.send("❌ البوت لا يملك صلاحية لتعديل رتب هذا الشخص (تأكد أن رتبة البوت أعلى منه في القائمة ولديها صلاحية إدارة الأدوار).")
+    except Exception as e:
+        await ctx.send(f"❌ حدث خطأ غير متوقع: {e}")
+
+
+# ================= ⚖️ نظام الاعتراض والـ Modals =================
 
 class AdminAppealButtons(disnake.ui.View):
     def __init__(self, user_id, violation_data):
@@ -373,7 +388,6 @@ class RoomAppealBaseButton(disnake.ui.View):
         if gid not in db or uid not in db[gid] or len(db[gid][uid]) == 0:
             return await inter.response.send_message("❌ ملفك نظيف تماماً! ليس لديك أي مخالفات لتسجيل اعتراض عليها.", ephemeral=True)
 
-        # إرسال قائمة الاختيارات للشخص بشكل مخفي (ephemeral) يختار منها
         await inter.response.send_message(
             content="📋 ظهرت لك قائمة بمخالفاتك المسجلة حالياً، يرجى اختيار واحدة لتحديدها:",
             view=DirectAppealSelectView(db[gid][uid], inter.author.id),
@@ -381,7 +395,7 @@ class RoomAppealBaseButton(disnake.ui.View):
         )
 
 
-# ================= 🚓 قائمة المخالفات الكاملة =================
+# ================= 🚓 قائمة المخالفات =================
 VIOLATIONS = [
     ("زره", "500"),
     ("قطع اشاره", "3000"),
@@ -439,7 +453,7 @@ class ViolationSelect(disnake.ui.Select):
             embed.set_image(url=self.image)
 
         await inter.message.delete()
-        await inter.channel.send(embed=embed) # ترسل هنا بدون أزرار، لأن التقديم صار بالروم العام
+        await inter.channel.send(embed=embed)
 
 class ViolationView(disnake.ui.View):
     def __init__(self, member, officer, image):
@@ -525,21 +539,18 @@ async def pay(ctx):
     await ctx.send(embed=embed, view=PayView(db[gid][uid]))
 
 
-# ================= ⚡ تشغيل البوت وإرسال إمبيد تقديم الاعتراض التلقائي =================
+# ================= ⚡ تشغيل البوت والتهيئة التلقائية =================
 
 @bot.event
 async def on_ready():
     print(f"✅ تم تشغيل البوت بنجاح باسم: {bot.user}")
     
-    # ربط الأزرار الثابتة لكي لا تعطل عند ريستارت البوت
     bot.add_view(RoomAppealBaseButton())
     bot.add_view(AdminAppealButtons(None, None))
     
-    # إرسال رسالة التقديم الثابتة في روم المواطنين المخصص
     channel = bot.get_channel(APPEAL_CHANNEL_ID)
     if channel:
         try:
-            # تنظيف الروم أولاً لكي لا تتكرر الرسائل عند كل تشغيل
             await channel.purge(limit=10)
             
             embed = disnake.Embed(
