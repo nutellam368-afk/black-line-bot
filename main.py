@@ -11,7 +11,7 @@ bot = commands.Bot(command_prefix="-", intents=intents)
 
 # ==== ملفات قواعد البيانات ====
 BANK_FILE = "bank.json"
-VIOLATION_FILE = "violations.json"
+CONFIG_FILE = "config.json"  # لضمان حفظ تسلسل الهويات المتغير
 
 # ==== إعدادات الرومات الثابتة ====
 APPEAL_CHANNEL_ID = 1498633999579615242  
@@ -20,18 +20,13 @@ ADMIN_LOG_CHANNEL_ID = 1509623362991821011
 IDENTITY_SETUP_CHANNEL = 1484406368524828672   # روم بنل تقديم الهوية
 IDENTITY_ADMIN_CHANNEL = 1484405475805233202   # روم قبول ورفض الهوية للإدارة
 
+# ==== إعدادات الرتب المطلوبة عند القبول ====
+AUTO_ROLES = [1491881927005835407, 1492523810937897132, 1491881746151510158]
+
 # ================= دوان الـ Helper والـ Format =================
 def format_num(val):
-    try:
-        return f"{int(val):,} ⃁"
-    except:
-        return str(val)
-
-def clean_num(val_str):
-    try:
-        return int(str(val_str).replace(",", ""))
-    except:
-        return 0
+    try: return f"{int(val):,} ⃁"
+    except: return str(val)
 
 def load(file):
     if os.path.exists(file):
@@ -58,33 +53,73 @@ def update_user(gid, uid, data):
     db[str(gid)][str(uid)] = data
     save(BANK_FILE, db)
 
-# ================= 🪪 نظام تقديم الهوية (الأسئلة داخل إمبيد) =================
+# دالة لجلب وتحديث رقم الهوية التالي المتسلسل
+def get_next_identity_id():
+    config = load(CONFIG_FILE)
+    if "next_id" not in config:
+        config["next_id"] = 1123  # البداية المطلوبة
+    current_id = config["next_id"]
+    config["next_id"] += 1
+    save(CONFIG_FILE, config)
+    return current_id
+
+# ================= 🪪 نظام تقديم الهوية المتكامل =================
 
 class IdentityAdminButtons(disnake.ui.View):
-    def __init__(self, applicant_id=None):
+    def __init__(self, applicant_id=None, roblox_name=""):
         super().__init__(timeout=None)
         self.applicant_id = applicant_id
+        self.roblox_name = roblox_name
 
     @disnake.ui.button(label="قبول", style=disnake.ButtonStyle.green, custom_id="id_approve_global")
     async def id_approve(self, button: disnake.ui.Button, inter: disnake.MessageInteraction):
         if not inter.author.guild_permissions.administrator:
             return await inter.response.send_message("❌ الصلاحية للإدارة العليا فقط!", ephemeral=True)
         
+        await inter.response.defer()
+        
+        # جلب العضو المستهدف بالتقديم
+        member = inter.guild.get_member(self.applicant_id)
+        if not member:
+            return await inter.followup.send("❌ تعذر العثور على العضو داخل السيرفر (قد يكون غادر السيرفر).")
+        
+        # 1. صرف رقم الهوية المتسلسل القادم
+        identity_id = get_next_identity_id()
+        
+        # 2. تغيير اسم العضو داخل السيرفر بناءً على (حسابه روبكس | الهوية)
+        new_nick = f"{self.roblox_name} | {identity_id}"
+        try:
+            await member.edit(nick=new_nick)
+        except Exception as e:
+            print(f"⚠️ تعذر تغيير اسم العضو بسبب الصلاحيات: {e}")
+
+        # 3. إعطاء الرتب التلقائية الثلاثة للعضو
+        roles_added = []
+        for role_id in AUTO_ROLES:
+            role = inter.guild.get_role(role_id)
+            if role:
+                try:
+                    await member.add_roles(role)
+                    roles_added.append(role.name)
+                except Exception as e:
+                    print(f"⚠️ تعذر إعطاء رتبة {role_id}: {e}")
+
+        # 4. تحديث رسالة التحقق للإدارة بنتيجة القبول
         embed = inter.message.embeds[0]
-        embed.title = "✅ تم قبول طلب الهوية"
+        embed.title = "✅ تم قبول طلب الهوية وتفعيل الحساب"
         embed.color = 0x00ff00
-        embed.add_field(name="⚖️ المسؤول", value=inter.author.mention, inline=False)
+        embed.add_field(name="⚖️ المسؤول", value=inter.author.mention, inline=True)
+        embed.add_field(name="🪪 الهوية الممنوحة", value=f"`{identity_id}`", inline=True)
         await inter.message.edit(embed=embed, view=None)
         
+        # 5. إشعار العضو بنجاح قبول طلبه بالخاص
         try:
-            app_id = self.applicant_id
-            if not app_id:
-                mention_field = inter.message.embeds[0].fields[0].value
-                app_id = int(mention_field.replace("<@", "").replace(">", "").replace("!", ""))
-            member = inter.guild.get_member(app_id)
-            if member:
-                reply_embed = disnake.Embed(title="🎉 تهانينا!", description="تم قبول طلب الهوية الخاص بك في السيرفر بنجاح.", color=0x00ff00)
-                await member.send(embed=reply_embed)
+            reply_embed = disnake.Embed(
+                title="🎉 تهانينا تفعيل هويتك!",
+                description=f"تم قبول طلب الهوية الخاص بك بنجاح!\n\n**🪪 رقم الهوية:** {identity_id}\n**👤 الاسم الجديد:** {new_nick}\n\nنتمنى لك وقتاً ممتعاً باللعب.",
+                color=0x00ff00
+            )
+            await member.send(embed=reply_embed)
         except: pass
 
     @disnake.ui.button(label="رفض", style=disnake.ButtonStyle.red, custom_id="id_deny_global")
@@ -99,13 +134,9 @@ class IdentityAdminButtons(disnake.ui.View):
         await inter.message.edit(embed=embed, view=None)
         
         try:
-            app_id = self.applicant_id
-            if not app_id:
-                mention_field = inter.message.embeds[0].fields[0].value
-                app_id = int(mention_field.replace("<@", "").replace(">", "").replace("!", ""))
-            member = inter.guild.get_member(app_id)
+            member = inter.guild.get_member(self.applicant_id)
             if member:
-                reply_embed = disnake.Embed(title="👎 تعذر قبول الطلب", description="للأسف، تم رفض طلب الهوية الخاص بك من قبل الإدارة.", color=0xff0000)
+                reply_embed = disnake.Embed(title="👎 تعذر قبول الهوية", description="للأسف، تم رفض طلب الهوية الخاص بك بعد مراجعته من قبل الإدارة.", color=0xff0000)
                 await member.send(embed=reply_embed)
         except: pass
 
@@ -140,7 +171,7 @@ class IdentityConfirmView(disnake.ui.View):
         if self.answers["image_url"]:
             embed.set_image(url=self.answers["image_url"])
 
-        await admin_channel.send(embed=embed, view=IdentityAdminButtons(inter.author.id))
+        await admin_channel.send(embed=embed, view=IdentityAdminButtons(inter.author.id, self.answers["roblox"]))
         
         success_embed = disnake.Embed(title="✅ تم التقديم", description="تم إرسال طلب هويتك إلى الإدارة بنجاح وجاري مراجعته.", color=0x00ff00)
         await inter.followup.send(embed=success_embed)
@@ -150,6 +181,66 @@ class IdentityConfirmView(disnake.ui.View):
     async def cancel_send(self, button: disnake.ui.Button, inter: disnake.MessageInteraction):
         cancel_embed = disnake.Embed(description="❌ تم إلغاء تقديم الطلب بنجاح.", color=0xff0000)
         await inter.response.send_message(embed=cancel_embed, ephemeral=True)
+        self.stop()
+
+
+class IdentityStartConfirmation(disnake.ui.View):
+    def __init__(self, bot_instance, guild_id):
+        super().__init__(timeout=60)
+        self.bot = bot_instance
+        self.guild_id = guild_id
+
+    @disnake.ui.button(label="قبول", style=disnake.ButtonStyle.green)
+    async def accept_start(self, button: disnake.ui.Button, inter: disnake.MessageInteraction):
+        # مسح أزرار التأكيد وبدء طرح الأسئلة فوراً كما في الصورة
+        await inter.response.edit_message(view=None)
+        
+        try:
+            dm = inter.author
+            
+            # مصفوفة الأسئلة مطابقة للصور المعطاة تماماً
+            questions = [
+                {"title": "1/6 طلب هوية", "desc": "اسمك:"},
+                {"title": "2/6 طلب هوية", "desc": "عمرك:"},
+                {"title": "3/6 طلب هوية", "desc": "حسابك روبكس:"},
+                {"title": "4/6 طلب هوية", "desc": "اذكر قانون من السيرفر:"},
+                {"title": "5/6 طلب هوية", "desc": "اذكر قانون من الرول:"},
+                {"title": "6/6 طلب هوية", "desc": "احلف هذا الـحـلـف 👈 : ( اقـسـم بـالله الـعـظـيـم انـا ( اسـمك ) انـي لـن اخـرب بـ رولات بـلاك لايـن و لـن اسـرب اي رابـط مـن روابـط الـسـيـرفـر وانـي لـن اهـكـر الـسـيـرفـر والله عـلـى مـا اقـولـه شـهـيـد ) مـمـنـوع الـنـسـخ !"},
+                {"title": "📸 أرسل صورة حسابك الآن", "desc": "قم برفع لقطة شاشة لحسابك أو ضع الرابط المباشر هنا:"}
+            ]
+            
+            answers = {}
+            keys = ["name", "age", "roblox", "rule1", "rule2", "oath", "image_url"]
+            
+            def check(m):
+                return m.author.id == inter.author.id and isinstance(m.channel, disnake.DMChannel)
+
+            for i, q in enumerate(questions):
+                q_embed = disnake.Embed(title=q["title"], description=q["desc"], color=0x2b2d31)
+                await dm.send(embed=q_embed)
+                
+                msg = await self.bot.wait_for("message", check=check, timeout=180)
+                
+                if i == 6:  
+                    if msg.attachments: answers[keys[i]] = msg.attachments[0].url
+                    else: answers[keys[i]] = msg.content
+                else:
+                    answers[keys[i]] = msg.content
+
+            confirm_main_embed = disnake.Embed(title="❓ تأكيد التقديم", description="هل أنت متأكد من رغبتك في إرسال التقديم النهائي للإدارة؟", color=0xe74c3c)
+            await dm.send(embed=confirm_main_embed, view=IdentityConfirmView(answers, self.bot, self.guild_id))
+            
+        except Exception as e:
+            try:
+                err_embed = disnake.Embed(title="❌ إلغاء التقديم", description="انتهى الوقت المتاح للإجابة على الأسئلة أو تم إغلاق الخاص.", color=0xff0000)
+                await inter.author.send(embed=err_embed)
+            except: pass
+        self.stop()
+
+    @disnake.ui.button(label="رفض", style=disnake.ButtonStyle.red)
+    async def deny_start(self, button: disnake.ui.Button, inter: disnake.MessageInteraction):
+        cancel_embed = disnake.Embed(description="❌ تم إلغاء بدء التقديم بنجاح.", color=0xff0000)
+        await inter.response.edit_message(embed=cancel_embed, view=None)
         self.stop()
 
 
@@ -163,52 +254,18 @@ class IdentityPanelButton(disnake.ui.View):
         await inter.response.send_message("📥 تم بدء التقديم، يرجى التوجه لرسائلك الخاصة للإجابة على الأسئلة فوراً.", ephemeral=True)
         
         try:
-            dm = inter.author
-            guild_id = inter.guild.id
-            
-            # مصفوفة العناوين والأسئلة لتركيبها داخل الإمبيد بشكل ممتاز
-            questions = [
-                {"title": "🪪 1/6 طلب هوية", "desc": "الرجاء كتابة اسمك الحقيقي:"},
-                {"title": "🪪 2/6 طلب هوية", "desc": "الرجاء كتابة عمرك:"},
-                {"title": "🪪 3/6 طلب هوية", "desc": "الرجاء كتابة اسم حسابك في روبلوكس:"},
-                {"title": "🪪 4/6 طلب هوية", "desc": "اذكر قانون واحد من قوانين السيرفر العامة:"},
-                {"title": "🪪 5/6 طلب هوية", "desc": "اذكر قانون واحد من قوانين الرول بلاي (Roleplay):"},
-                {"title": "🪪 6/6 طلب هوية", "desc": "احلف هذا الحلف (اكتب الحلف كاملاً للتوثيق):"},
-                {"title": "📸 إرفاق الإثبات", "desc": "أرسل صورة حسابك الآن (قم برفع صورة مباشرة أو كتابة رابطها):"}
-            ]
-            
-            answers = {}
-            keys = ["name", "age", "roblox", "rule1", "rule2", "oath", "image_url"]
-            
-            def check(m):
-                return m.author.id == inter.author.id and isinstance(m.channel, disnake.DMChannel)
-
-            for i, q in enumerate(questions):
-                # تحويل كل سؤال نصي إلى إمبيد منسق
-                q_embed = disnake.Embed(title=q["title"], description=q["desc"], color=0x3498db)
-                await dm.send(embed=q_embed)
-                
-                msg = await self.bot.wait_for("message", check=check, timeout=180)
-                
-                if i == 6:  
-                    if msg.attachments:
-                        answers[keys[i]] = msg.attachments[0].url
-                    else:
-                        answers[keys[i]] = msg.content
-                else:
-                    answers[keys[i]] = msg.content
-
-            confirm_main_embed = disnake.Embed(title="❓ تأكيد التقديم", description="هل أنت متأكد من رغبتك في إرسال التقديم النهائي للإدارة؟", color=0xe74c3c)
-            await dm.send(embed=confirm_main_embed, view=IdentityConfirmView(answers, self.bot, guild_id))
-            
-        except Exception as e:
-            try: 
-                err_embed = disnake.Embed(title="❌ إلغاء التقديم", description=f"انتهى وقت التقديم المتاح أو واجهنا مشكلة: {e}", color=0xff0000)
-                await inter.author.send(embed=err_embed)
-            except: pass
+            # إرسال رسالة التأكيد المبدئية في الخاص مثل الصورة بالظبط بالزرين قبول/رفض
+            start_confirm_embed = disnake.Embed(
+                title="❓ تأكيد التقديم",
+                description="هل متأكد بدء التقديم؟",
+                color=0x2b2d31
+            )
+            await inter.author.send(embed=start_confirm_embed, view=IdentityStartConfirmation(self.bot, inter.guild.id))
+        except:
+            await inter.followup.send("❌ تعذر إرسال الأسئلة لك! تأكد من فتح إعدادات الرسائل الخاصة (Direct Messages) في حسابك أولاً.", ephemeral=True)
 
 
-# ================= 💵 نظام الرواتب الآلي وجدول الأوقات =================
+# ================= 💵 نظام الرواتب الأسبوعي المخصص للإدارة =================
 
 SALARY_ROLES = {
     "دعم فني مبتدئ": 4500, "دعم الفني مترقي": 5500, "دعم فني محترف": 6500, "مسؤول الدعم فني": 8500,
@@ -237,14 +294,12 @@ async def salary_status(ctx):
     days = remaining.days
     hours, remainder = divmod(remaining.seconds, 3600)
     minutes, _ = divmod(remainder, 60)
-    
     time_str = f"{days} يوم و {hours} ساعة و {minutes} دقيقة"
 
     embed = disnake.Embed(title="🕒 حالة نظام الرواتب الأسبوعي", color=0x2b2d31)
     embed.add_field(name="📅 موعد الصرف الثابت:", value="كل يوم جمعة الساعة 1:00 مساءً", inline=False)
     embed.add_field(name="⌛ الموعد القادم خلال:", value=time_str, inline=False)
     embed.set_footer(text=f"وزارة الموارد البشرية | {datetime.now().strftime('%I:%M,%d/%m/%Y')}")
-    
     await ctx.send(embed=embed)
 
 @salary_status.error
@@ -263,8 +318,7 @@ async def auto_salary_check():
             count = 0
             
             for member in guild.members:
-                if member.bot:
-                    continue
+                if member.bot: continue
                 
                 highest_salary = 0
                 for role in member.roles:
@@ -328,14 +382,15 @@ async def reset_roles(ctx, member: disnake.Member):
     except:
         await ctx.send("❌ البوت لا يملك صلاحية لتعديل رتب هذا الشخص.")
 
-# ================= ⚡ تشغيل البوت والتهيئة التلقائية =================
+# ================= ⚡ تشغيل البوت والتهيئة التلقائية المضمونة =================
 
 @bot.event
 async def on_ready():
     print(f"✅ تم تسجيل الدخول بنجاح باسم: {bot.user}")
     
+    # تسجيل الفيو الثابتة بالبوت للعمل المستمر
     bot.add_view(IdentityPanelButton(bot))
-    bot.add_view(IdentityAdminButtons(None))
+    bot.add_view(IdentityAdminButtons(None, ""))
     
     if not auto_salary_check.is_running():
         auto_salary_check.start()
