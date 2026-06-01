@@ -17,7 +17,7 @@ VIOLATION_FILE = "violations.json"
 APPEAL_CHANNEL_ID = 1498633999579615242  
 ADMIN_LOG_CHANNEL_ID = 1509623362991821011  
 
-IDENTITY_SETUP_CHANNEL = 1484406368524828672   # روم بنل تقديم الهوية (المطلوب)
+IDENTITY_SETUP_CHANNEL = 1484406368524828672   # روم بنل تقديم الهوية
 IDENTITY_ADMIN_CHANNEL = 1484405475805233202   # روم قبول ورفض الهوية للإدارة
 
 # ================= دوان الـ Helper والـ Format =================
@@ -58,7 +58,7 @@ def update_user(gid, uid, data):
     db[str(gid)][str(uid)] = data
     save(BANK_FILE, db)
 
-# ================= 🪪 نظام تقديم الهوية =================
+# ================= 🪪 نظام تقديم الهوية (الأسئلة داخل إمبيد) =================
 
 class IdentityAdminButtons(disnake.ui.View):
     def __init__(self, applicant_id=None):
@@ -82,7 +82,9 @@ class IdentityAdminButtons(disnake.ui.View):
                 mention_field = inter.message.embeds[0].fields[0].value
                 app_id = int(mention_field.replace("<@", "").replace(">", "").replace("!", ""))
             member = inter.guild.get_member(app_id)
-            if member: await member.send("🎉 تهانينا! تم قبول طلب الهوية الخاص بك في السيرفر بنجاح.")
+            if member:
+                reply_embed = disnake.Embed(title="🎉 تهانينا!", description="تم قبول طلب الهوية الخاص بك في السيرفر بنجاح.", color=0x00ff00)
+                await member.send(embed=reply_embed)
         except: pass
 
     @disnake.ui.button(label="رفض", style=disnake.ButtonStyle.red, custom_id="id_deny_global")
@@ -102,7 +104,9 @@ class IdentityAdminButtons(disnake.ui.View):
                 mention_field = inter.message.embeds[0].fields[0].value
                 app_id = int(mention_field.replace("<@", "").replace(">", "").replace("!", ""))
             member = inter.guild.get_member(app_id)
-            if member: await member.send("👎 للأسف، تم رفض طلب الهوية الخاص بك من قبل الإدارة.")
+            if member:
+                reply_embed = disnake.Embed(title="👎 تعذر قبول الطلب", description="للأسف، تم رفض طلب الهوية الخاص بك من قبل الإدارة.", color=0xff0000)
+                await member.send(embed=reply_embed)
         except: pass
 
 
@@ -137,12 +141,15 @@ class IdentityConfirmView(disnake.ui.View):
             embed.set_image(url=self.answers["image_url"])
 
         await admin_channel.send(embed=embed, view=IdentityAdminButtons(inter.author.id))
-        await inter.followup.send("✅ تم إرسال طلب هويتك إلى الإدارة بنجاح وجاري مراجعته.")
+        
+        success_embed = disnake.Embed(title="✅ تم التقديم", description="تم إرسال طلب هويتك إلى الإدارة بنجاح وجاري مراجعته.", color=0x00ff00)
+        await inter.followup.send(embed=success_embed)
         self.stop()
 
     @disnake.ui.button(label="رفض", style=disnake.ButtonStyle.red)
     async def cancel_send(self, button: disnake.ui.Button, inter: disnake.MessageInteraction):
-        await inter.response.send_message("❌ تم إلغاء تقديم الطلب بنجاح.", ephemeral=True)
+        cancel_embed = disnake.Embed(description="❌ تم إلغاء تقديم الطلب بنجاح.", color=0xff0000)
+        await inter.response.send_message(embed=cancel_embed, ephemeral=True)
         self.stop()
 
 
@@ -158,14 +165,16 @@ class IdentityPanelButton(disnake.ui.View):
         try:
             dm = inter.author
             guild_id = inter.guild.id
+            
+            # مصفوفة العناوين والأسئلة لتركيبها داخل الإمبيد بشكل ممتاز
             questions = [
-                "1/6 طلب هوية\nاسمك:",
-                "2/6 طلب هوية\nعمرك:",
-                "3/6 طلب هوية\nحسابك روبكس:",
-                "4/6 طلب هوية\nاذكر قانون من السيرفر:",
-                "5/6 طلب هوية\nاذكر قانون من الرول:",
-                "6/6 طلب هوية\nاحلف هذا الحلف:",
-                "📸 أرسل صورة حسابك الآن (ارفع صورة أو اكتب رابط):"
+                {"title": "🪪 1/6 طلب هوية", "desc": "الرجاء كتابة اسمك الحقيقي:"},
+                {"title": "🪪 2/6 طلب هوية", "desc": "الرجاء كتابة عمرك:"},
+                {"title": "🪪 3/6 طلب هوية", "desc": "الرجاء كتابة اسم حسابك في روبلوكس:"},
+                {"title": "🪪 4/6 طلب هوية", "desc": "اذكر قانون واحد من قوانين السيرفر العامة:"},
+                {"title": "🪪 5/6 طلب هوية", "desc": "اذكر قانون واحد من قوانين الرول بلاي (Roleplay):"},
+                {"title": "🪪 6/6 طلب هوية", "desc": "احلف هذا الحلف (اكتب الحلف كاملاً للتوثيق):"},
+                {"title": "📸 إرفاق الإثبات", "desc": "أرسل صورة حسابك الآن (قم برفع صورة مباشرة أو كتابة رابطها):"}
             ]
             
             answers = {}
@@ -175,7 +184,10 @@ class IdentityPanelButton(disnake.ui.View):
                 return m.author.id == inter.author.id and isinstance(m.channel, disnake.DMChannel)
 
             for i, q in enumerate(questions):
-                await dm.send(q)
+                # تحويل كل سؤال نصي إلى إمبيد منسق
+                q_embed = disnake.Embed(title=q["title"], description=q["desc"], color=0x3498db)
+                await dm.send(embed=q_embed)
+                
                 msg = await self.bot.wait_for("message", check=check, timeout=180)
                 
                 if i == 6:  
@@ -186,11 +198,13 @@ class IdentityPanelButton(disnake.ui.View):
                 else:
                     answers[keys[i]] = msg.content
 
-            confirm_embed = disnake.Embed(title="❓ تأكيد التقديم", description="هل انت متأكد من رغبتك في إرسال التقديم؟", color=0xe74c3c)
-            await dm.send(embed=confirm_embed, view=IdentityConfirmView(answers, self.bot, guild_id))
+            confirm_main_embed = disnake.Embed(title="❓ تأكيد التقديم", description="هل أنت متأكد من رغبتك في إرسال التقديم النهائي للإدارة؟", color=0xe74c3c)
+            await dm.send(embed=confirm_main_embed, view=IdentityConfirmView(answers, self.bot, guild_id))
             
         except Exception as e:
-            try: await inter.author.send(f"❌ انتهى وقت التقديم أو واجهنا مشكلة: {e}")
+            try: 
+                err_embed = disnake.Embed(title="❌ إلغاء التقديم", description=f"انتهى وقت التقديم المتاح أو واجهنا مشكلة: {e}", color=0xff0000)
+                await inter.author.send(embed=err_embed)
             except: pass
 
 
@@ -214,7 +228,6 @@ def get_next_friday_one_pm():
     next_friday = now + timedelta(days=days_ahead)
     return datetime.combine(next_friday.date(), time(13, 0))
 
-# تعديل صلاحية الأمر: للإدارة فقط 👑
 @bot.command(name="الرواتب")
 @commands.has_permissions(administrator=True)
 async def salary_status(ctx):
@@ -272,7 +285,9 @@ async def auto_salary_check():
                     update_user(guild.id, member.id, user)
                     total_distributed += highest_salary
                     count += 1
-                    try: await member.send(f"💵 تم إيداع راتبك الأسبوعي بمبلغ {format_num(highest_salary)} في حسابك بنجاح!")
+                    try: 
+                        dm_sal_embed = disnake.Embed(description=f"💵 تم إيداع راتبك الأسبوعي بمبلغ {format_num(highest_salary)} في حسابك بنجاح!", color=0x00ff00)
+                        await member.send(embed=dm_sal_embed)
                     except: pass
             
             if log_channel and count > 0:
@@ -282,7 +297,7 @@ async def auto_salary_check():
                 await log_channel.send(embed=embed)
 
 
-# ================= الأنظمة الأساسية المتبقية للحسابات والمخالفات =================
+# ================= الأنظمة الأساسية المتبقية لحسابات البنك =================
 
 @bot.command(name="حسابي")
 async def my_account(ctx):
@@ -313,30 +328,24 @@ async def reset_roles(ctx, member: disnake.Member):
     except:
         await ctx.send("❌ البوت لا يملك صلاحية لتعديل رتب هذا الشخص.")
 
-# ================= ⚡ تشغيل البوت والتهيئة التلقائية المضمونة =================
+# ================= ⚡ تشغيل البوت والتهيئة التلقائية =================
 
 @bot.event
 async def on_ready():
     print(f"✅ تم تسجيل الدخول بنجاح باسم: {bot.user}")
     
-    # 1. تسجيل الفيو لتعمل بشكل دائم ومستقر بعد كل ريستارت للبوت
     bot.add_view(IdentityPanelButton(bot))
     bot.add_view(IdentityAdminButtons(None))
     
-    # 2. بدء تايمر الرواتب إذا لم يكن شغالاً
     if not auto_salary_check.is_running():
         auto_salary_check.start()
         
-    # 3. الانتظار حتى يتصل البوت تماماً بقنوات ديسكورد لتفادي مشكلة الـ None
     await bot.wait_until_ready()
     
-    # 4. إرسال وتحديث بنل تقديم الهوية بالطريقة المطلوبة في الروم المحدد
     channel_id_setup = bot.get_channel(IDENTITY_SETUP_CHANNEL)
     if channel_id_setup:
         try:
-            await channel_id_setup.purge(limit=5) # تنظيف الروم ليكون مرتباً
-            
-            # التنسيق والمحتوى بطريقتنا الجديدة للتقديم
+            await channel_id_setup.purge(limit=5)
             embed_id = disnake.Embed(
                 title="🪪 طلب هوية",
                 description="طلب هوية مهم عشان تقدر تلعب",
@@ -346,8 +355,6 @@ async def on_ready():
             print("📬 تم إرسال وتحديث بنل تقديم الهوية في الروم المخصص بنجاح!")
         except Exception as e:
             print(f"❌ تعذر تنظيف الروم أو إرسال الرسالة: {e}")
-    else:
-        print("❌ خطأ: لم يتم العثور على أيدي روم الهويات! تأكد من تشغيل البوت في نفس السيرفر.")
 
 @bot.event
 async def on_message(message):
