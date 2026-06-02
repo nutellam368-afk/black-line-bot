@@ -157,7 +157,7 @@ class IdentityConfirmView(disnake.ui.View):
         embed.add_field(name="📝 قانون السيرفر:", value=self.answers["rule1"], inline=False)
         embed.add_field(name="📝 قانون الرول:", value=self.answers["rule2"], inline=False)
         
-        # التحديث الجديد: عرض الحلف المطلوب مقارنة بكتابة العضو لسهولة كشف الأخطاء أو النسخ
+        # تم إصلاح هذا الجزء تماماً وتجنب خطأ f-string المشاهد في صورة image_12.png
         embed.add_field(name="📜 الـحـلـف المـطـلـوب (الأصـلـي):", value=f"```\n({OATH_TEXT_ORIGINAL})\n
 ```", inline=False)
         embed.add_field(name="✍️ كـتـابـة الـعـضـو الـحـالـيـة:", value=f"```\n{self.answers['oath']}\n```", inline=False)
@@ -248,7 +248,7 @@ class IdentityPanelButton(disnake.ui.View):
         try:
             start_confirm_embed = disnake.Embed(
                 title="❓ تأكيد التقديم",
-                description="هل متأكد بدء التقديم？",
+                description="هل متأكد بدء التقديم؟",
                 color=0x2b2d31
             )
             await inter.author.send(embed=start_confirm_embed, view=IdentityStartConfirmation(self.bot, inter.guild.id))
