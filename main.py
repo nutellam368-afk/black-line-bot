@@ -11,7 +11,7 @@ bot = commands.Bot(command_prefix="-", intents=intents)
 
 # ==== ملفات قواعد البيانات ====
 BANK_FILE = "bank.json"
-CONFIG_FILE = "config.json"  # لضمان حفظ تسلسل الهويات المتغير
+CONFIG_FILE = "config.json"
 
 # ==== إعدادات الرومات الثابتة ====
 APPEAL_CHANNEL_ID = 1498633999579615242  
@@ -22,6 +22,9 @@ IDENTITY_ADMIN_CHANNEL = 1484405475805233202   # روم قبول ورفض اله
 
 # ==== إعدادات الرتب المطلوبة عند القبول ====
 AUTO_ROLES = [1491881927005835407, 1492523810937897132, 1491881746151510158]
+
+# النص الأصلي والكامل للحلف للرجوع إليه ومقارنته
+OATH_TEXT_ORIGINAL = "اقـسـم بـالله الـعـظـيـم انـا ( اسـمك ) انـي لـن اخـرب بـ رولات بـلاك لايـن و لـن اسـرب اي رابـط مـن روابـط الـسـيـرفـر وانـي لـن اهـكـر الـسـيـرفـر والله عـلـى مـا اقـولـه شـهـيـد"
 
 # ================= دوان الـ Helper والـ Format =================
 def format_num(val):
@@ -53,11 +56,10 @@ def update_user(gid, uid, data):
     db[str(gid)][str(uid)] = data
     save(BANK_FILE, db)
 
-# دالة لجلب وتحديث رقم الهوية التالي المتسلسل
 def get_next_identity_id():
     config = load(CONFIG_FILE)
     if "next_id" not in config:
-        config["next_id"] = 1123  # البداية المطلوبة
+        config["next_id"] = 1123
     current_id = config["next_id"]
     config["next_id"] += 1
     save(CONFIG_FILE, config)
@@ -80,26 +82,20 @@ class IdentityAdminButtons(disnake.ui.View):
         
         member = inter.guild.get_member(self.applicant_id)
         if not member:
-            return await inter.followup.send("❌ تعذر العثور على العضو داخل السيرفر (قد يكون غادر السيرفر).")
+            return await inter.followup.send("❌ تعذر العثور على العضو داخل السيرفر.")
         
-        # 1. صرف رقم الهوية المتسلسل القادم
         identity_id = get_next_identity_id()
-        
-        # 2. تغيير اسم العضو داخل السيرفر بناءً على (حسابه روبلوكس | الهوية)
         new_nick = f"{self.roblox_name} | {identity_id}"
-        try:
-            await member.edit(nick=new_nick)
-        except Exception as e:
-            print(f"⚠️ تعذر تغيير اسم العضو بسبب الصلاحيات: {e}")
+        
+        try: await member.edit(nick=new_nick)
+        except Exception as e: print(f"⚠️ تعذر تغيير الاسم: {e}")
 
-        # 3. إعطاء الرتب التلقائية الثلاثة للعضو
         for role_id in AUTO_ROLES:
             role = inter.guild.get_role(role_id)
             if role:
                 try: await member.add_roles(role)
                 except Exception as e: print(f"⚠️ تعذر إعطاء رتبة {role_id}: {e}")
 
-        # 4. تحديث رسالة التحقق للإدارة بنتيجة القبول
         embed = inter.message.embeds[0]
         embed.title = "✅ تم قبول طلب الهوية وتفعيل الحساب"
         embed.color = 0x00ff00
@@ -107,7 +103,6 @@ class IdentityAdminButtons(disnake.ui.View):
         embed.add_field(name="🪪 الهوية الممنوحة", value=f"`{identity_id}`", inline=True)
         await inter.message.edit(embed=embed, view=None)
         
-        # 5. إشعار العضو بنجاح قبول طلبه بالخاص
         try:
             reply_embed = disnake.Embed(
                 title="🎉 تهانينا تفعيل هويتك!",
@@ -154,7 +149,6 @@ class IdentityConfirmView(disnake.ui.View):
         if not admin_channel:
             return await inter.followup.send("❌ حدث خطأ: لا يمكن العثور على روم الإدارة الخاص بالهويات.")
 
-        # هنا تم إبراز حقل الـحـلـف واليمين بشكل كامل وواضح لتتمكن الإدارة من مراجعته وقراءته للتأكد
         embed = disnake.Embed(title="🪪 طلب هوية جديد للتحقق ومراجعة الحلف", color=0x3498db)
         embed.add_field(name="👤 صاحب الطلب", value=f"<@{inter.author.id}>", inline=False)
         embed.add_field(name="📝 اسمك:", value=self.answers["name"], inline=True)
@@ -163,9 +157,10 @@ class IdentityConfirmView(disnake.ui.View):
         embed.add_field(name="📝 قانون السيرفر:", value=self.answers["rule1"], inline=False)
         embed.add_field(name="📝 قانون الرول:", value=self.answers["rule2"], inline=False)
         
-        # إبراز الحلف داخل كود بلوك لسهولة القراءة والمقارنة
-        embed.add_field(name="📜 الـحـلـف والـيـمـيـن الـمـكـتـوب بـيـده:", value=f"```\n{self.answers['oath']}\n
+        # التحديث الجديد: عرض الحلف المطلوب مقارنة بكتابة العضو لسهولة كشف الأخطاء أو النسخ
+        embed.add_field(name="📜 الـحـلـف المـطـلـوب (الأصـلـي):", value=f"```\n({OATH_TEXT_ORIGINAL})\n
 ```", inline=False)
+        embed.add_field(name="✍️ كـتـابـة الـعـضـو الـحـالـيـة:", value=f"```\n{self.answers['oath']}\n```", inline=False)
         
         if self.answers["image_url"]:
             embed.set_image(url=self.answers["image_url"])
@@ -202,7 +197,7 @@ class IdentityStartConfirmation(disnake.ui.View):
                 {"title": "3/6 طلب هوية", "desc": "حسابك روبلوكس:"},
                 {"title": "4/6 طلب هوية", "desc": "اذكر قانون من السيرفر:"},
                 {"title": "5/6 طلب هوية", "desc": "اذكر قانون من الرول:"},
-                {"title": "6/6 طلب هوية", "desc": "احلف هذا الـحـلـف 👈 : ( اقـسـم بـالله الـعـظـيـم انـا ( اسـمك ) انـي لـن اخـرب بـ رولات بـلاك لايـن و لـن اسـرب اي رابـط مـن روابـط الـسـيـرفـر وانـي لـن اهـكـر الـسـيـرفـر والله عـلـى مـا اقـولـه شـهـيـد ) مـمـنـوع الـنـسـخ !"},
+                {"title": "6/6 طلب هوية", "desc": f"احلف هذا الـحـلـف 👈 : ( {OATH_TEXT_ORIGINAL} ) مـمـنـوع الـنـسـخ !"},
                 {"title": "📸 أرسل صورة حسابك الآن", "desc": "قم برفع لقطة شاشة لحسابك أو ضع الرابط المباشر هنا:"}
             ]
             
@@ -253,12 +248,12 @@ class IdentityPanelButton(disnake.ui.View):
         try:
             start_confirm_embed = disnake.Embed(
                 title="❓ تأكيد التقديم",
-                description="هل متأكد بدء التقديم؟",
+                description="هل متأكد بدء التقديم？",
                 color=0x2b2d31
             )
             await inter.author.send(embed=start_confirm_embed, view=IdentityStartConfirmation(self.bot, inter.guild.id))
         except:
-            await inter.followup.send("❌ تعذر إرسال الأسئلة لك! تأكد من فتح إعدادات الرسائل الخاصة (Direct Messages) في حسابك أولاً.", ephemeral=True)
+            await inter.followup.send("❌ تأكد من فتح إعدادات الرسائل الخاصة أولاً.", ephemeral=True)
 
 
 # ================= 💵 نظام الرواتب الأسبوعي المخصص للإدارة =================
@@ -402,9 +397,9 @@ async def on_ready():
                 color=0x2b2d31
             )
             await channel_id_setup.send(embed=embed_id, view=IdentityPanelButton(bot))
-            print("📬 تم إرسال وتحديث بنل تقديم الهوية في الروم المخصص بنجاح!")
+            print("📬 تم إرسال بنل تقديم الهوية بنجاح!")
         except Exception as e:
-            print(f"❌ تعذر تنظيف الروم أو إرسال الرسالة: {e}")
+            print(f"❌ تعذر تحديث البنل: {e}")
 
 @bot.event
 async def on_message(message):
