@@ -78,7 +78,6 @@ class IdentityAdminButtons(disnake.ui.View):
         
         await inter.response.defer()
         
-        # جلب العضو المستهدف بالتقديم
         member = inter.guild.get_member(self.applicant_id)
         if not member:
             return await inter.followup.send("❌ تعذر العثور على العضو داخل السيرفر (قد يكون غادر السيرفر).")
@@ -94,15 +93,11 @@ class IdentityAdminButtons(disnake.ui.View):
             print(f"⚠️ تعذر تغيير اسم العضو بسبب الصلاحيات: {e}")
 
         # 3. إعطاء الرتب التلقائية الثلاثة للعضو
-        roles_added = []
         for role_id in AUTO_ROLES:
             role = inter.guild.get_role(role_id)
             if role:
-                try:
-                    await member.add_roles(role)
-                    roles_added.append(role.name)
-                except Exception as e:
-                    print(f"⚠️ تعذر إعطاء رتبة {role_id}: {e}")
+                try: await member.add_roles(role)
+                except Exception as e: print(f"⚠️ تعذر إعطاء رتبة {role_id}: {e}")
 
         # 4. تحديث رسالة التحقق للإدارة بنتيجة القبول
         embed = inter.message.embeds[0]
@@ -159,14 +154,18 @@ class IdentityConfirmView(disnake.ui.View):
         if not admin_channel:
             return await inter.followup.send("❌ حدث خطأ: لا يمكن العثور على روم الإدارة الخاص بالهويات.")
 
-        embed = disnake.Embed(title="🪪 طلب هوية جديد للتحقق", color=0x3498db)
+        # هنا تم إبراز حقل الـحـلـف واليمين بشكل كامل وواضح لتتمكن الإدارة من مراجعته وقراءته للتأكد
+        embed = disnake.Embed(title="🪪 طلب هوية جديد للتحقق ومراجعة الحلف", color=0x3498db)
         embed.add_field(name="👤 صاحب الطلب", value=f"<@{inter.author.id}>", inline=False)
         embed.add_field(name="📝 اسمك:", value=self.answers["name"], inline=True)
         embed.add_field(name="📝 عمرك:", value=self.answers["age"], inline=True)
         embed.add_field(name="📝 حسابك روبلوكس:", value=self.answers["roblox"], inline=True)
         embed.add_field(name="📝 قانون السيرفر:", value=self.answers["rule1"], inline=False)
         embed.add_field(name="📝 قانون الرول:", value=self.answers["rule2"], inline=False)
-        embed.add_field(name="📝 الحلف واليمين:", value=self.answers["oath"], inline=False)
+        
+        # إبراز الحلف داخل كود بلوك لسهولة القراءة والمقارنة
+        embed.add_field(name="📜 الـحـلـف والـيـمـيـن الـمـكـتـوب بـيـده:", value=f"```\n{self.answers['oath']}\n
+```", inline=False)
         
         if self.answers["image_url"]:
             embed.set_image(url=self.answers["image_url"])
@@ -197,7 +196,6 @@ class IdentityStartConfirmation(disnake.ui.View):
         try:
             dm = inter.author
             
-            # تم تعديل التسمية هنا إلى حسابك روبلوكس لتكون دقيقة بالكامل
             questions = [
                 {"title": "1/6 طلب هوية", "desc": "اسمك:"},
                 {"title": "2/6 طلب هوية", "desc": "عمرك:"},
