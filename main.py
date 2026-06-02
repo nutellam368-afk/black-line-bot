@@ -86,7 +86,7 @@ class IdentityAdminButtons(disnake.ui.View):
         # 1. صرف رقم الهوية المتسلسل القادم
         identity_id = get_next_identity_id()
         
-        # 2. تغيير اسم العضو داخل السيرفر بناءً على (حسابه روبكس | الهوية)
+        # 2. تغيير اسم العضو داخل السيرفر بناءً على (حسابه روبلوكس | الهوية)
         new_nick = f"{self.roblox_name} | {identity_id}"
         try:
             await member.edit(nick=new_nick)
@@ -163,7 +163,7 @@ class IdentityConfirmView(disnake.ui.View):
         embed.add_field(name="👤 صاحب الطلب", value=f"<@{inter.author.id}>", inline=False)
         embed.add_field(name="📝 اسمك:", value=self.answers["name"], inline=True)
         embed.add_field(name="📝 عمرك:", value=self.answers["age"], inline=True)
-        embed.add_field(name="📝 حسابك روبكس:", value=self.answers["roblox"], inline=True)
+        embed.add_field(name="📝 حسابك روبلوكس:", value=self.answers["roblox"], inline=True)
         embed.add_field(name="📝 قانون السيرفر:", value=self.answers["rule1"], inline=False)
         embed.add_field(name="📝 قانون الرول:", value=self.answers["rule2"], inline=False)
         embed.add_field(name="📝 الحلف واليمين:", value=self.answers["oath"], inline=False)
@@ -192,17 +192,16 @@ class IdentityStartConfirmation(disnake.ui.View):
 
     @disnake.ui.button(label="قبول", style=disnake.ButtonStyle.green)
     async def accept_start(self, button: disnake.ui.Button, inter: disnake.MessageInteraction):
-        # مسح أزرار التأكيد وبدء طرح الأسئلة فوراً كما في الصورة
         await inter.response.edit_message(view=None)
         
         try:
             dm = inter.author
             
-            # مصفوفة الأسئلة مطابقة للصور المعطاة تماماً
+            # تم تعديل التسمية هنا إلى حسابك روبلوكس لتكون دقيقة بالكامل
             questions = [
                 {"title": "1/6 طلب هوية", "desc": "اسمك:"},
                 {"title": "2/6 طلب هوية", "desc": "عمرك:"},
-                {"title": "3/6 طلب هوية", "desc": "حسابك روبكس:"},
+                {"title": "3/6 طلب هوية", "desc": "حسابك روبلوكس:"},
                 {"title": "4/6 طلب هوية", "desc": "اذكر قانون من السيرفر:"},
                 {"title": "5/6 طلب هوية", "desc": "اذكر قانون من الرول:"},
                 {"title": "6/6 طلب هوية", "desc": "احلف هذا الـحـلـف 👈 : ( اقـسـم بـالله الـعـظـيـم انـا ( اسـمك ) انـي لـن اخـرب بـ رولات بـلاك لايـن و لـن اسـرب اي رابـط مـن روابـط الـسـيـرفـر وانـي لـن اهـكـر الـسـيـرفـر والله عـلـى مـا اقـولـه شـهـيـد ) مـمـنـوع الـنـسـخ !"},
@@ -254,7 +253,6 @@ class IdentityPanelButton(disnake.ui.View):
         await inter.response.send_message("📥 تم بدء التقديم، يرجى التوجه لرسائلك الخاصة للإجابة على الأسئلة فوراً.", ephemeral=True)
         
         try:
-            # إرسال رسالة التأكيد المبدئية في الخاص مثل الصورة بالظبط بالزرين قبول/رفض
             start_confirm_embed = disnake.Embed(
                 title="❓ تأكيد التقديم",
                 description="هل متأكد بدء التقديم؟",
@@ -382,13 +380,12 @@ async def reset_roles(ctx, member: disnake.Member):
     except:
         await ctx.send("❌ البوت لا يملك صلاحية لتعديل رتب هذا الشخص.")
 
-# ================= ⚡ تشغيل البوت والتهيئة التلقائية المضمونة =================
+# ================= ⚡ تشغيل البوت والتهيئة التلقائية =================
 
 @bot.event
 async def on_ready():
     print(f"✅ تم تسجيل الدخول بنجاح باسم: {bot.user}")
     
-    # تسجيل الفيو الثابتة بالبوت للعمل المستمر
     bot.add_view(IdentityPanelButton(bot))
     bot.add_view(IdentityAdminButtons(None, ""))
     
